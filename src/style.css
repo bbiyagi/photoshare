@@ -1,0 +1,178 @@
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+@import '@fontsource/jua/400.css';
+@import '@fontsource/gaegu/700.css';
+@import "tailwindcss";
+
+/*
+ * 디자인 토큰 (2단계 도색)
+ * - 메인: 차분한 보라(brand). 앱의 기본 색: 상단바, 버튼, 핀
+ * - 포인트: 로즈 코랄(accent). "지금 보고 있는 것"에만: 선택한 핀, 경로, 숫자 배지, 목록 번호
+ * - 다크 모드는 휴대폰 설정을 따른다. 지도 타일은 밝은 그대로 둔다.
+ * - 모서리: 카드·시트 16px(rounded-2xl), 버튼 알약형(rounded-full), 입력칸 10px(rounded-[10px])
+ */
+:root {
+  --bg: #f6f5fa;
+  --surface: #ffffff;
+  --surface-2: #efedf5;
+  --text: #221e2e;
+  --muted: #625c70;
+  --line: #ddd9e6;
+  --brand: #6b5b95;
+  --brand-mid: #8a7bb0;
+  --brand-strong: #4a3f6b;
+  --brand-soft: #ece8f4;
+  --on-brand: #ffffff;
+  --bar: #6b5b95; /* 상단바 */
+  --on-bar: #ffffff;
+  --accent: #c7404f;
+  --on-accent: #ffffff;
+  --overlay: rgb(42 36 56 / 0.88);
+  --shadow: 74 63 107; /* 그림자는 검정 대신 보랏빛 */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16131f;
+    --surface: #211d2c;
+    --surface-2: #2a2538;
+    --text: #eeebf5;
+    --muted: #ada6bd;
+    --line: #3a3449;
+    --brand: #9a8ac7;
+    --brand-mid: #7d6eaa;
+    --brand-strong: #2e2742;
+    --brand-soft: #2f2940;
+    --on-brand: #16131f;
+    --bar: #2e2742;
+    --on-bar: #eeebf5;
+    --overlay: rgb(22 19 31 / 0.9);
+    --shadow: 0 0 0;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-brand: var(--brand);
+  --color-brand-mid: var(--brand-mid);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-bar: var(--bar);
+  --color-on-bar: var(--on-bar);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-overlay: var(--overlay);
+
+  --font-sans: 'Pretendard Variable', Pretendard, system-ui, sans-serif;
+  --font-title: 'Jua', 'Pretendard Variable', sans-serif;
+  --font-logo: 'Gaegu', 'Jua', sans-serif;
+
+  --shadow-soft: 0 6px 20px rgb(var(--shadow) / 0.16);
+  --shadow-lift: 0 12px 32px rgb(var(--shadow) / 0.26);
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 공통 입력칸·버튼 (모서리 규칙: 입력 10px, 버튼 알약형) */
+@layer components {
+  .field {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text);
+    padding: 0.625rem 0.75rem;
+    outline: none;
+  }
+  .field:focus {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+  }
+  .btn-primary,
+  .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    padding: 0.625rem 1.125rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+  .btn-primary {
+    background: var(--brand);
+    color: var(--on-brand);
+  }
+  .btn-ghost {
+    border: 1.5px solid var(--brand);
+    color: var(--brand);
+  }
+  .btn-primary:disabled,
+  .btn-ghost:disabled {
+    opacity: 0.55;
+  }
+  .alert {
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--accent);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+}
+
+/* 버튼을 누르면 살짝 눌리는 느낌 */
+.press {
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.press:active {
+  transform: scale(0.97);
+}
+
+/* 공통 등장 애니메이션 (Vue <Transition name="…">) */
+.rise-enter-active,
+.rise-leave-active,
+.slide-enter-active,
+.slide-leave-active,
+.fade-enter-active,
+.fade-leave-active {
+  transition:
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s ease;
+}
+.rise-enter-from,
+.rise-leave-to {
+  transform: translateY(16px);
+  opacity: 0;
+}
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(-100%);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 동작 줄이기 설정이면 움직임을 끈다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
