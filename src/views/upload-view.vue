@@ -9,6 +9,7 @@ import { createEvent, createPlace, fetchPlacesOfEvent, insertPhoto, setCoverIfEm
 import {
   compressImage,
   distanceMeters,
+  makePreviewUrl,
   readMeta,
   removeFiles,
   uploadWithProgress,
@@ -113,6 +114,20 @@ async function onFilesSelected(e: Event) {
   }
 }
 
+// 브라우저가 바로 못 보여 주는 사진(대부분 아이폰 HEIC)은 JPEG 로 변환해 미리보기를 만든다.
+// 이때 변환한 결과는 업로드할 때 그대로 다시 쓴다.
+async function onPreviewError(item: Item) {
+  item.previewFailed = true
+  const url = await makePreviewUrl(item.file)
+  if (!url || !items.value.includes(item)) {
+    if (url) URL.revokeObjectURL(url)
+    return
+  }
+  URL.revokeObjectURL(item.previewUrl)
+  item.previewUrl = url
+  item.previewFailed = false
+}
+
 function removeItem(item: Item) {
   URL.revokeObjectURL(item.previewUrl)
   items.value = items.value.filter((i) => i !== item)
@@ -195,18 +210,16 @@ async function uploadItem(item: Item, eventId: string, placeId: string): Promise
   item.progress = 0
   const uploaded: string[] = []
   try {
-    const { main, thumb, original } = await compressImage(item.file)
+    // HEIC 도 여기서 JPEG 로 바뀌므로 저장은 항상 .jpg
+    const { main, thumb } = await compressImage(item.file)
     const id = crypto.randomUUID()
-    const ext = original ? (item.file.name.split('.').pop()?.toLowerCase() ?? 'jpg') : 'jpg'
-    const mainPath = `${eventId}/${id}.${ext}`
-    const thumbPath = thumb ? `${eventId}/thumb/${id}.jpg` : null
+    const mainPath = `${eventId}/${id}.jpg`
+    const thumbPath = `${eventId}/thumb/${id}.jpg`
 
-    await uploadWithProgress(mainPath, main.blob, (r) => (item.progress = r * (thumb ? 0.9 : 1)))
+    await uploadWithProgress(mainPath, main.blob, (r) => (item.progress = r * 0.9))
     uploaded.push(mainPath)
-    if (thumb && thumbPath) {
-      await uploadWithProgress(thumbPath, thumb.blob, (r) => (item.progress = 0.9 + r * 0.1))
-      uploaded.push(thumbPath)
-    }
+    await uploadWithProgress(thumbPath, thumb.blob, (r) => (item.progress = 0.9 + r * 0.1))
+    uploaded.push(thumbPath)
 
     const photoId = await insertPhoto({
       placeId,
@@ -312,7 +325,7 @@ const doneCount = computed(() => items.value.filter((i) => i.status === 'done').
         <ul class="space-y-4">
           <li v-for="item in items" :key="item.id" class="flex gap-3">
             <div class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-2">
-              <img v-if="!item.previewFailed" :src="item.previewUrl" alt="" class="h-full w-full object-cover" @error="item.previewFailed = true" />
+              <img v-if="!item.previewFailed" :src="item.previewUrl" alt="" class="h-full w-full object-cover" @error="onPreviewError(item)" />
               <PhImage v-else :size="24" class="text-muted" />
             </div>
 

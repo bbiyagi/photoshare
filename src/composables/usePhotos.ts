@@ -1,4 +1,4 @@
-import exifr from 'exifr'
+import ExifReader from 'exifreader'
 import { PHOTO_BUCKET } from '@/composables/useEvents'
 import { useSupabase } from '@/composables/useSupabase'
 
@@ -26,19 +26,25 @@ export function validateFile(file: File): string | null {
   return null
 }
 
-// 리사이징하면 EXIF 가 사라지므로 반드시 압축 전에 원본에서 읽는다
+// EXIF 날짜 "2025:04:05 14:30:00" → 기기 시간대 기준 Date (사진을 찍은 현지 시각)
+function parseExifDate(value: string | undefined): Date | null {
+  const m = value?.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/)
+  if (!m) return null
+  const date = new Date(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+// 리사이징하면 EXIF 가 사라지므로 반드시 압축 전에 원본에서 읽는다.
+// ExifReader 를 쓰는 이유: exifr 는 아이폰 HEIC 의 EXIF 를 읽지 못하는 경우가 있었다.
 export async function readMeta(file: File): Promise<PhotoMeta> {
   try {
-    const exif = await exifr.parse(file, { tiff: true, exif: true, gps: true, pick: ['DateTimeOriginal', 'CreateDate', 'latitude', 'longitude'] })
-    const takenAt = exif?.DateTimeOriginal ?? exif?.CreateDate ?? null
-    const lat = Number(exif?.latitude)
-    const lng = Number(exif?.longitude)
+    const tags = await ExifReader.load(await file.arrayBuffer(), { expanded: true })
+    const takenAt =
+      parseExifDate(tags.exif?.DateTimeOriginal?.description) ?? parseExifDate(tags.exif?.DateTimeDigitized?.description)
+    const lat = Number(tags.gps?.Latitude)
+    const lng = Number(tags.gps?.Longitude)
     const hasGps = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
-    return {
-      takenAt: takenAt instanceof Date && !Number.isNaN(takenAt.getTime()) ? takenAt : null,
-      latitude: hasGps ? lat : null,
-      longitude: hasGps ? lng : null,
-    }
+    return { takenAt, latitude: hasGps ? lat : null, longitude: hasGps ? lng : null }
   } catch {
     return { takenAt: null, latitude: null, longitude: null } // EXIF 없음/손상 → 수동 입력
   }
@@ -63,23 +69,57 @@ async function encodeJpeg(bitmap: ImageBitmap, maxSide: number): Promise<Encoded
   return { blob, width, height }
 }
 
-// 클라이언트에서 긴 변 2048px JPEG + 400px 썸네일로 줄인다.
-// 브라우저가 디코딩하지 못하는 형식(예: Chrome 의 HEIC)은 원본을 그대로 올리고 썸네일은 생략한다.
-export async function compressImage(file: File): Promise<{ main: Encoded; thumb: Encoded | null; original: boolean }> {
-  let bitmap: ImageBitmap
+const isHeicFile = (file: File) => /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
+
+// HEIC → JPEG 변환 결과. 미리보기에서 한 번 변환하면 업로드 때 다시 변환하지 않는다.
+const convertedHeic = new WeakMap<File, Blob>()
+
+// 사진을 그릴 수 있는 비트맵으로 연다.
+// 대부분의 브라우저(Chrome·Edge·삼성 인터넷 등)는 아이폰 HEIC 를 읽지 못해서 JPEG 로 변환한다.
+// 변환기(libheif, 약 3MB)는 HEIC 를 골랐을 때만 불러온다. Safari 처럼 직접 읽을 수 있으면 변환하지 않는다.
+async function openImage(file: File): Promise<ImageBitmap> {
   try {
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    return await createImageBitmap(file, { imageOrientation: 'from-image' })
   } catch {
-    if (file.size > MAX_UPLOAD_BYTES) throw new Error('이 형식은 브라우저에서 줄일 수 없어 10MB 이하만 올릴 수 있어요')
-    return { main: { blob: file, width: 0, height: 0 }, thumb: null, original: true }
+    if (!isHeicFile(file)) throw new Error('사진을 읽지 못했어요. 파일이 손상됐을 수 있어요.')
   }
+  let jpeg = convertedHeic.get(file)
+  if (!jpeg) {
+    try {
+      const { heicTo } = await import('heic-to')
+      jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 })
+    } catch {
+      throw new Error('HEIC 사진을 변환하지 못했어요. 사진 앱에서 JPG로 내보내 다시 올려 주세요.')
+    }
+    convertedHeic.set(file, jpeg)
+  }
+  return createImageBitmap(jpeg)
+}
+
+// 클라이언트에서 긴 변 2048px JPEG + 400px 썸네일로 줄인다 (HEIC 도 JPEG 로 저장된다)
+export async function compressImage(file: File): Promise<{ main: Encoded; thumb: Encoded }> {
+  const bitmap = await openImage(file)
   try {
     const main = await encodeJpeg(bitmap, MAX_SIDE)
     const thumb = await encodeJpeg(bitmap, THUMB_SIDE)
     if (main.blob.size > MAX_UPLOAD_BYTES) throw new Error('압축 후에도 10MB를 넘어요')
-    return { main, thumb, original: false }
+    return { main, thumb }
   } finally {
     bitmap.close()
+  }
+}
+
+// 브라우저가 바로 못 보여 주는 사진(HEIC)의 미리보기 이미지 주소. 실패하면 null
+export async function makePreviewUrl(file: File): Promise<string | null> {
+  try {
+    const bitmap = await openImage(file)
+    try {
+      return URL.createObjectURL((await encodeJpeg(bitmap, 240)).blob)
+    } finally {
+      bitmap.close()
+    }
+  } catch {
+    return null
   }
 }
 

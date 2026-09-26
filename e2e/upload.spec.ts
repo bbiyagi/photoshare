@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { cleanupE2E, findE2EEvent, fixture } from './support/db'
+import { cleanupE2E, db, findE2EEvent, fixture } from './support/db'
 import { card } from './support/map'
 
 // 사진 올리기: 장소 이름 없이 올리기, 위치 없는 사진은 지도에서 고르기,
@@ -65,6 +65,45 @@ test('같은 제목을 입력하면 기존 추억에 추가하도록 제안하�
   await expect(card(page)).toContainText('3곳 중 2번째 장소')
   await page.locator('main').getByRole('button', { name: '다음 장소' }).click()
   await expect(card(page)).toContainText('3곳 중 3번째 장소')
+})
+
+test('아이폰 HEIC 사진도 JPEG 로 변환해서 올라간다', async ({ page }, testInfo) => {
+  const title = `[E2E] HEIC 업로드 ${testInfo.project.name}`
+  await page.goto('/upload')
+
+  // 크롬은 HEIC 를 직접 못 읽으므로 변환기(heic-to)를 이때 불러와야 한다
+  const converterLoaded = page.waitForRequest(/heic-to/)
+  await page.locator('input[type=file]').setInputFiles([fixture('iphone-daegu.heic')])
+  await converterLoaded
+
+  // 변환 전 원본에서 읽은 촬영일·위치가 그대로 보인다
+  await expect(page.getByText('2025-04-05 14:30')).toBeVisible()
+  await expect(page.getByText('사진에 위치 정보가 있어요')).toBeVisible()
+
+  // 미리보기가 변환된 이미지로 보인다 (회색 아이콘이 아니라)
+  const preview = page.locator('li img').first()
+  await expect(preview).toHaveAttribute('src', /^blob:/)
+  await expect.poll(() => preview.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
+
+  await page.getByLabel('제목').fill(title)
+  await page.getByRole('button', { name: '1장 올리기' }).click()
+  await expect(page.getByText('1장을 올렸어요')).toBeVisible({ timeout: 30_000 })
+
+  // 저장은 JPEG 원본(.jpg) + 썸네일, 크기는 원본 그대로(1600x1200 은 2048 이하라 줄이지 않음)
+  const event = await findE2EEvent(title)
+  const { client } = await db()
+  const { data: photos } = await client
+    .from('photos')
+    .select('storage_path, thumbnail_path, width, height, taken_at, places!inner(event_id)')
+    .eq('places.event_id', event!.id)
+  expect(photos).toHaveLength(1)
+  expect(photos![0].storage_path).toMatch(/\.jpg$/)
+  expect(photos![0].thumbnail_path).toMatch(/\/thumb\/.+\.jpg$/)
+  expect([photos![0].width, photos![0].height]).toEqual([1600, 1200])
+
+  await page.getByRole('link', { name: '지도에서 보기' }).click()
+  await expect(card(page)).toContainText(title)
+  await expect(card(page).locator('img')).toHaveJSProperty('complete', true)
 })
 
 test('제목이 다르면 제안하지 않는다', async ({ page }) => {
