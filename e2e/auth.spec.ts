@@ -13,16 +13,16 @@ test('로그인하지 않으면 로그인 화면으로 보낸다', async ({ page
 test('비밀번호가 틀리면 안내한다', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('이메일').fill(process.env.E2E_EMAIL!)
-  await page.getByLabel('비밀번호').fill('wrong-password')
+  await page.getByLabel('비밀번호', { exact: true }).fill('wrong-password')
   await page.getByRole('button', { name: '로그인' }).click()
-  await expect(page.getByRole('alert')).toHaveText('이메일 또는 비밀번호가 맞지 않아요.')
+  await expect(page.getByRole('alert')).toContainText('이메일 또는 비밀번호가 맞지 않아요.')
   await expect(page).toHaveURL(/\/login/)
 })
 
 test('로그인하면 원래 가려던 곳으로 가고, 로그아웃하면 로그인 화면으로 간다', async ({ page }) => {
   await page.goto('/upload')
   await page.getByLabel('이메일').fill(process.env.E2E_EMAIL!)
-  await page.getByLabel('비밀번호').fill(process.env.E2E_PASSWORD!)
+  await page.getByLabel('비밀번호', { exact: true }).fill(process.env.E2E_PASSWORD!)
   await page.getByRole('button', { name: '로그인' }).click()
   await expect(page).toHaveURL('/upload')
 

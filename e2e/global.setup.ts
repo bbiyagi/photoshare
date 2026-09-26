@@ -7,7 +7,7 @@ setup('로그인 세션 저장', async ({ page }) => {
 
   await page.goto('/login')
   await page.getByLabel('이메일').fill(process.env.E2E_EMAIL!)
-  await page.getByLabel('비밀번호').fill(process.env.E2E_PASSWORD!)
+  await page.getByLabel('비밀번호', { exact: true }).fill(process.env.E2E_PASSWORD!)
   await page.getByRole('button', { name: '로그인' }).click()
   await expect(page).toHaveURL('/')
   await page.context().storageState({ path: 'e2e/.auth/state.json' })

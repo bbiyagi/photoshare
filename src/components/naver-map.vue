@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { loadNaverMaps } from '@/composables/useNaverMaps'
 import type { EventItem, MapMarker } from '@/types/models'
+import { clusterHtml, FOCUS_OFFSET_PX, FOCUS_ZOOM, groupMarkers, markerHtml, pinTitle } from '@/utils/map-markers'
 
 // 네이버 지도 + 마커
 // - 화면에 보이는 범위(bounds) 안의 마커만 그린다
@@ -22,9 +23,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{ select: [marker: MapMarker]; mapClick: [] }>()
 
-const CLUSTER_PX = 48
-const FOCUS_ZOOM = 16 // 장소를 고르면 이 정도(동네 골목)까지 확대
-const FOCUS_OFFSET_PX = 110 // 핀을 화면 가운데보다 이만큼 아래에 둬서 위쪽 카드가 화면 안에 들어오게
 const DEFAULT_CENTER = { lat: 35.8714, lng: 128.6014 } // 대구시청
 
 const container = ref<HTMLDivElement>()
@@ -36,33 +34,6 @@ let map: naver.maps.Map | null = null
 let rendered: naver.maps.Marker[] = []
 let route: naver.maps.Polyline | null = null
 const listeners: naver.maps.MapEventListener[] = []
-
-const BADGE_STYLE =
-  'position:absolute;border-radius:9999px;background:var(--accent);color:var(--on-accent);text-align:center;box-shadow:0 2px 6px rgb(var(--shadow) / .3);font-family:var(--font-sans);font-weight:700'
-
-// 핀: 기본은 보라, 강조는 포인트 색. 한 장소에 추억이 여러 개면 숫자 배지를 단다
-function markerHtml(count: number, highlighted: boolean) {
-  const color = highlighted ? 'var(--accent)' : 'var(--brand)'
-  const badge =
-    count > 1
-      ? `<span style="${BADGE_STYLE};top:-10px;right:-12px;min-width:20px;height:20px;padding:0 6px;font-size:12px;line-height:20px">${count}</span>`
-      : ''
-  return `<div style="position:relative;width:30px;height:30px;transform:translate(-50%,-100%);cursor:pointer">
-    <span style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${color};border:2px solid #fff;box-shadow:0 3px 8px rgb(var(--shadow) / .35)"></span>
-    <span style="position:absolute;left:10px;top:9px;width:10px;height:10px;border-radius:9999px;background:#fff"></span>
-    ${badge}
-  </div>`
-}
-
-// 클러스터: 반투명 보라 원 + 추억 개수 배지
-function clusterHtml(eventCount: number) {
-  const size = eventCount >= 20 ? 60 : eventCount >= 5 ? 52 : 44
-  return `<div style="position:relative;width:${size}px;height:${size}px;transform:translate(-50%,-50%);cursor:pointer">
-    <span style="position:absolute;inset:0;border-radius:9999px;background:var(--brand-mid);opacity:.88;border:3px solid #fff;box-shadow:0 4px 12px rgb(var(--shadow) / .3)"></span>
-    <span style="position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:9999px;background:#fff"></span>
-    <span style="${BADGE_STYLE};top:-8px;right:-10px;min-width:24px;height:24px;padding:0 7px;font-size:13px;line-height:24px">${eventCount}</span>
-  </div>`
-}
 
 const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 const toLatLng = (lat: number, lng: number) => new maps.LatLng(lat, lng)
@@ -81,27 +52,14 @@ function renderMarkers() {
   const projection = map.getProjection()
   const visible = props.markers.filter((m) => bounds.hasLatLng(toLatLng(m.latitude, m.longitude)))
 
-  const groups: { x: number; y: number; items: MapMarker[] }[] = []
-  for (const m of visible) {
-    const p = projection.fromCoordToOffset(toLatLng(m.latitude, m.longitude))
-    const near = groups.find((g) => Math.hypot(g.x - p.x, g.y - p.y) < CLUSTER_PX)
-    if (near) near.items.push(m)
-    else groups.push({ x: p.x, y: p.y, items: [m] })
-  }
-
-  for (const g of groups) {
-    const first = g.items[0]!
-    // 강조된 마커는 클러스터에 묻히지 않게 따로 그린다
-    const highlightedInGroup = g.items.some((m) => props.highlightKeys.includes(m.key))
-
-    if (g.items.length === 1 || highlightedInGroup) {
-      for (const m of highlightedInGroup ? g.items : [first]) {
-        const highlighted = props.highlightKeys.includes(m.key)
+  for (const g of groupMarkers(visible, props.highlightKeys, (m) => projection.fromCoordToOffset(toLatLng(m.latitude, m.longitude)))) {
+    if (g.kind === 'pins') {
+      for (const { marker: m, highlighted } of g.items) {
         const marker = new maps.Marker({
           map,
           position: toLatLng(m.latitude, m.longitude),
           icon: { content: markerHtml(m.events.length, highlighted) },
-          title: `${m.placeName || '장소'}, 추억 ${m.events.length}개`,
+          title: pinTitle(m),
           zIndex: highlighted ? 100 : 10,
         })
         maps.Event.addListener(marker, 'click', () => emit('select', m))
@@ -110,12 +68,12 @@ function renderMarkers() {
       continue
     }
 
-    const eventCount = new Set(g.items.flatMap((m) => m.events.map((e) => e.id))).size
+    const first = g.items[0]!
     const cluster = new maps.Marker({
       map,
       position: toLatLng(first.latitude, first.longitude),
-      icon: { content: clusterHtml(eventCount) },
-      title: `장소 ${g.items.length}곳, 추억 ${eventCount}개`,
+      icon: { content: clusterHtml(g.eventCount) },
+      title: `장소 ${g.items.length}곳, 추억 ${g.eventCount}개`,
       zIndex: 50,
     })
     maps.Event.addListener(cluster, 'click', () => {

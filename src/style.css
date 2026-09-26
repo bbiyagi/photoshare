@@ -26,6 +26,8 @@
   --on-bar: #ffffff;
   --accent: #c7404f;
   --on-accent: #ffffff;
+  --danger: #a8303e; /* 오류 글자: 옅은 빨강 배경 위에서도 4.5:1 이상 */
+  --field-line: #8e87a0; /* 입력칸 테두리: 흰 바탕 대비 3:1 이상 */
   --overlay: rgb(42 36 56 / 0.88);
   --shadow: 74 63 107; /* 그림자는 검정 대신 보랏빛 */
 }
@@ -45,6 +47,8 @@
     --on-brand: #16131f;
     --bar: #2e2742;
     --on-bar: #eeebf5;
+    --danger: #ff9aa4;
+    --field-line: #7a7290;
     --overlay: rgb(22 19 31 / 0.9);
     --shadow: 0 0 0;
   }
@@ -66,6 +70,8 @@
   --color-on-bar: var(--on-bar);
   --color-accent: var(--accent);
   --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
+  --color-field-line: var(--field-line);
   --color-overlay: var(--overlay);
 
   --font-sans: 'Pretendard Variable', Pretendard, system-ui, sans-serif;
@@ -87,12 +93,20 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+}
+input,
+textarea {
+  caret-color: var(--brand);
+}
+
 /* 공통 입력칸·버튼 (모서리 규칙: 입력 10px, 버튼 알약형) */
 @layer components {
   .field {
     width: 100%;
     border-radius: 10px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--field-line);
     background: var(--surface);
     color: var(--text);
     padding: 0.625rem 0.75rem;
@@ -100,7 +114,10 @@ body {
   }
   .field:focus {
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 40%, transparent);
+  }
+  .field[aria-invalid='true'] {
+    border-color: var(--danger);
   }
   .btn-primary,
   .btn-ghost {
@@ -128,7 +145,7 @@ body {
   .alert {
     border-radius: 10px;
     background: color-mix(in srgb, var(--accent) 10%, transparent);
-    color: var(--accent);
+    color: var(--danger);
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
   }

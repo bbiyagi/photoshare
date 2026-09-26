@@ -1,16 +1,29 @@
 <script setup lang="ts">
-import { PhArrowLeft, PhArrowRight, PhList, PhPlus } from '@phosphor-icons/vue'
+import { PhArrowLeft, PhArrowRight, PhGlobeHemisphereEast, PhList, PhMapTrifold, PhPlus } from '@phosphor-icons/vue'
 import { storeToRefs } from 'pinia'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, h, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import EventListDrawer from '@/components/event-list-drawer.vue'
 import MemoryCard from '@/components/memory-card.vue'
 import MemoryDetail from '@/components/memory-detail.vue'
 import MemoryList from '@/components/memory-list.vue'
 import NaverMap from '@/components/naver-map.vue'
+import WorldMapState from '@/components/world-map-state.vue'
 import { useAuthStore } from '@/stores/auth'
 import { markerKey, useEventsStore } from '@/stores/events'
 import type { EventItem, MapMarker } from '@/types/models'
+import { isInKorea } from '@/utils/map-markers'
+
+// 세계 지도(Leaflet)는 해외 추억을 열 때만 불러온다. 받는 동안·실패했을 때는 안내를 보여 준다
+const WorldMap = defineAsyncComponent({
+  loader: () => import('@/components/world-map.vue'),
+  loadingComponent: () => h(WorldMapState, { kind: 'loading' }),
+  errorComponent: () => h(WorldMapState, { kind: 'error' }),
+  delay: 150,
+  timeout: 20000,
+  // 잠깐 끊긴 연결은 두 번까지 조금 기다렸다 다시 받아 본다
+  onError: (_error, retry, fail, attempts) => (attempts <= 2 ? setTimeout(retry, 800 * attempts) : fail()),
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -88,9 +101,26 @@ const focus = computed(() => {
   return p ? { latitude: p.latitude, longitude: p.longitude } : null
 })
 
+// 국내는 네이버 지도, 해외는 세계 지도. 보고 있는 장소에 맞춰 자동으로 바뀐다
+const mapMode = ref<'korea' | 'world'>('korea')
+const inKorea = (m: { latitude: number; longitude: number }) => isInKorea(m.latitude, m.longitude)
+const koreaMarkers = computed(() => markers.value.filter(inKorea))
+const overseasEventCount = computed(
+  () => sortedEvents.value.filter((e) => e.places.some((p) => !inKorea(p))).length,
+)
+watch(focus, (f) => {
+  if (f) mapMode.value = inKorea(f) ? 'korea' : 'world'
+})
+
+function switchMap(mode: 'korea' | 'world') {
+  closeOverlay()
+  mapMode.value = mode
+}
+
 // 화면에 들어올 때마다 새로 불러오고, ?event=<id> 로 들어오면(업로드 후 "지도에서 보기") 그 추억을 바로 연다
 onMounted(async () => {
   await store.load()
+  if (!koreaMarkers.value.length && markers.value.length) mapMode.value = 'world' // 해외 추억만 있으면 세계 지도부터
   const target = typeof route.query.event === 'string' ? route.query.event : null
   if (!target) return
   const event = chronological.value.find((e) => e.id === target)
@@ -113,8 +143,10 @@ onMounted(async () => {
 
     <!-- isolate: 네이버 지도 내부 z-index(로고 등)가 목록 위로 올라오지 않게 가둔다 -->
     <main class="relative isolate flex-1 overflow-hidden">
-      <NaverMap
-        :markers="markers"
+      <component
+        :is="mapMode === 'korea' ? NaverMap : WorldMap"
+        :key="mapMode"
+        :markers="mapMode === 'korea' ? koreaMarkers : markers"
         :highlight-keys="highlightKeys"
         :route-event="selectedEvent"
         :focus="focus"
@@ -144,29 +176,47 @@ onMounted(async () => {
             @close="closeOverlay"
           />
         </Transition>
-      </NaverMap>
+      </component>
 
-      <!-- 화면 양끝: 시간순 이전·다음 추억 -->
+      <!-- 국내 지도 ↔ 세계 지도 -->
+      <button
+        v-if="mapMode === 'korea' && overseasEventCount"
+        type="button"
+        class="press absolute right-3 top-3 z-10 flex h-9 items-center gap-1.5 rounded-full bg-surface pl-3 pr-3.5 text-sm font-semibold text-ink shadow-soft"
+        @click="switchMap('world')"
+      >
+        <PhGlobeHemisphereEast :size="18" weight="bold" class="text-brand" /> 해외 추억 {{ overseasEventCount }}
+      </button>
+      <button
+        v-else-if="mapMode === 'world'"
+        type="button"
+        class="press absolute right-3 top-3 z-10 flex h-9 items-center gap-1.5 rounded-full bg-surface pl-3 pr-3.5 text-sm font-semibold text-ink shadow-soft"
+        @click="switchMap('korea')"
+      >
+        <PhMapTrifold :size="18" weight="bold" class="text-brand" /> 국내 지도
+      </button>
+
+      <!-- 화면 아래 양쪽: 시간순 이전·다음 추억.
+           카드 양옆 띠(같은 추억 안의 이전·다음 장소)와 겹치지 않게 화면 가운데가 아니라 아래에 두고,
+           둘을 헷갈리지 않게 글자를 붙인다. 아래 16px 은 네이버 로고·지도 출처 표시 자리로 비운다 -->
       <Transition name="fade">
         <button
           v-if="selectedEvent && hasPrev"
           type="button"
-          class="press absolute left-3 top-1/2 z-10 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-on-brand shadow-lift"
-          aria-label="이전 추억"
+          class="press absolute bottom-[calc(env(safe-area-inset-bottom)+2rem)] left-3 z-10 flex h-12 items-center gap-1.5 rounded-full bg-brand pl-3.5 pr-4 text-sm font-semibold text-on-brand shadow-lift"
           @click="prev"
         >
-          <PhArrowLeft :size="22" weight="bold" />
+          <PhArrowLeft :size="20" weight="bold" /> 이전 추억
         </button>
       </Transition>
       <Transition name="fade">
         <button
           v-if="selectedEvent && hasNext"
           type="button"
-          class="press absolute right-3 top-1/2 z-10 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-brand text-on-brand shadow-lift"
-          aria-label="다음 추억"
+          class="press absolute bottom-[calc(env(safe-area-inset-bottom)+2rem)] right-3 z-10 flex h-12 items-center gap-1.5 rounded-full bg-brand pl-4 pr-3.5 text-sm font-semibold text-on-brand shadow-lift"
           @click="next"
         >
-          <PhArrowRight :size="22" weight="bold" />
+          다음 추억 <PhArrowRight :size="20" weight="bold" />
         </button>
       </Transition>
 

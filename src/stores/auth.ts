@@ -26,16 +26,18 @@ export const useAuthStore = defineStore('auth', () => {
     const supabase = useSupabase()
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      throw new Error(
-        error.code === 'invalid_credentials' ? '이메일 또는 비밀번호가 맞지 않아요.' : `로그인하지 못했어요. (${error.message})`,
-      )
+      if (error.code === 'invalid_credentials') {
+        throw new Error('이메일 또는 비밀번호가 맞지 않아요. 기억나지 않으면 상대에게 비밀번호 재설정을 부탁해 주세요.')
+      }
+      console.error('signIn failed', error) // 원인은 콘솔에만 남기고, 화면에는 사람이 읽을 수 있는 문장만 보여 준다
+      throw new Error('연결이 불안정해요. 잠시 후 다시 시도해 주세요.')
     }
 
     // 계정은 있지만 members 에 등록되지 않았으면 RLS 때문에 아무것도 볼 수 없으므로 바로 막는다
     const { data: member, error: memberError } = await supabase.rpc('is_member')
     if (memberError || !member) {
       await supabase.auth.signOut()
-      throw new Error('앱 사용자로 등록되지 않은 계정이에요. 관리자에게 등록을 요청하세요.')
+      throw new Error('아직 등록되지 않은 계정이에요. 상대에게 등록을 부탁해 주세요.')
     }
     session.value = data.session
   }

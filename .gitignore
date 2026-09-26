@@ -33,3 +33,6 @@ dist-ssr
 /playwright-report/
 /test-results/
 /blob-report/
+
+# impeccable live 모드 임시 폴더
+/.impeccable/live/
