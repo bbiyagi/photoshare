@@ -4,7 +4,9 @@ import { defineConfig, devices } from '@playwright/test'
 process.loadEnvFile('.env')
 process.loadEnvFile('.env.test')
 
-const BASE_URL = 'http://localhost:5173'
+// 배포된 사이트를 테스트하려면: E2E_BASE_URL=https://....vercel.app npm run test:e2e
+const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
+const isLocal = BASE_URL.startsWith('http://localhost')
 
 export default defineConfig({
   testDir: './e2e',
@@ -46,10 +48,7 @@ export default defineConfig({
     },
   ],
   // 이미 npm run dev 가 켜져 있으면 그대로 쓰고, 없으면 켠다
-  webServer: {
-    command: 'npm run dev',
-    url: BASE_URL,
-    reuseExistingServer: true,
-    timeout: 60_000,
-  },
+  webServer: isLocal
+    ? { command: 'npm run dev', url: BASE_URL, reuseExistingServer: true, timeout: 60_000 }
+    : undefined,
 })
