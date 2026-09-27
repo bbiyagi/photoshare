@@ -5,7 +5,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import LocationPicker from '@/components/location-picker.vue'
 import PageHeader from '@/components/page-header.vue'
-import { createEvent, createPlace, fetchPlacesOfEvent, insertPhoto, setCoverIfEmpty } from '@/composables/useEvents'
+import { createEvent, createPlace, fetchPlacesOfEvent, insertPhoto, reorderPlaces, setCoverIfEmpty } from '@/composables/useEvents'
 import {
   compressImage,
   distanceMeters,
@@ -68,10 +68,21 @@ const toLocalInput = (d: Date) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)}MB`
 
-async function onFilesSelected(e: Event) {
+function onFilesSelected(e: Event) {
   const input = e.target as HTMLInputElement
   const files = [...(input.files ?? [])]
   input.value = '' // 같은 파일을 다시 고를 수 있게
+  addFiles(files)
+}
+
+// PC 에서 사진을 화면 어디에 끌어다 놓아도 추가한다 (밖에 떨어뜨려 브라우저가 사진을 열어 버리는 것도 막는다)
+const dragging = ref(false)
+function onDrop(e: DragEvent) {
+  dragging.value = false
+  if (!submitting.value) addFiles([...(e.dataTransfer?.files ?? [])])
+}
+
+async function addFiles(files: File[]) {
   finished.value = false
 
   for (const file of files) {
@@ -289,6 +300,9 @@ async function submit() {
       }
     }
 
+    // 기존 추억에 추가했으면 새 장소가 맨 뒤에 붙어 있으므로, 전체를 촬영 시각 순서로 다시 맞춘다
+    await reorderPlaces(eventId)
+
     const failed = items.value.filter((i) => i.status === 'failed').length
     formError.value = failed ? `${failed}장을 올리지 못했어요. 오류를 확인하고 다시 눌러 주세요.` : ''
     finished.value = !failed
@@ -304,17 +318,22 @@ const doneCount = computed(() => items.value.filter((i) => i.status === 'done').
 </script>
 
 <template>
-  <div class="min-h-dvh bg-bg text-ink">
+  <div
+    class="min-h-dvh bg-bg text-ink"
+    @dragover.prevent="dragging = true"
+    @dragleave="(e: DragEvent) => !e.relatedTarget && (dragging = false)"
+    @drop.prevent="onDrop"
+  >
     <PageHeader title="사진 올리기" />
 
     <form class="mx-auto flex max-w-lg flex-col gap-5 px-4 pb-4 pt-4" novalidate @submit.prevent="submit">
       <!-- 1. 파일 선택 -->
       <label
-        class="press flex h-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-brand-mid bg-brand-soft text-center text-brand"
-        :class="submitting ? 'pointer-events-none opacity-50' : ''"
+        class="press flex h-32 cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-brand-mid bg-brand-soft text-center text-brand transition-colors"
+        :class="[submitting ? 'pointer-events-none opacity-50' : '', dragging ? 'border-brand bg-brand/15' : '']"
       >
         <PhImagesSquare :size="30" />
-        <span class="font-semibold">사진 고르기</span>
+        <span class="font-semibold">{{ dragging ? '여기에 놓으면 추가돼요' : '사진 고르기' }}<span v-if="!dragging" class="hidden md:inline"> 또는 끌어다 놓기</span></span>
         <span class="text-xs text-muted">여러 장 한 번에, 한 장 최대 20MB (jpg, png, webp, heic)</span>
         <input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" :disabled="submitting" @change="onFilesSelected" />
       </label>

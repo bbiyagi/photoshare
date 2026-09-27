@@ -109,6 +109,12 @@ export async function fetchPlacesOfEvent(eventId: string) {
   return data.map((p) => ({ ...p, latitude: Number(p.latitude), longitude: Number(p.longitude) }))
 }
 
+// 추억 안의 장소 순서를 촬영 시각 순서로 다시 매긴다 (시간 정보가 없는 장소는 올린 순서대로 뒤에). 004_reorder_places.sql
+export async function reorderPlaces(eventId: string) {
+  const { error } = await useSupabase().rpc('reorder_places', { p_event_id: eventId })
+  if (error) throw new Error(`장소 순서를 정리하지 못했어요. (${error.message})`)
+}
+
 export async function createPlace(input: { eventId: string; latitude: number; longitude: number; visitOrder: number }) {
   const { data, error } = await useSupabase()
     .from('places')

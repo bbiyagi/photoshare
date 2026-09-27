@@ -87,9 +87,12 @@
 ⑤ 브라우저에서 줄이기: 긴 변 2048px JPEG + 400px 썸네일
      └ 아이폰 HEIC는 여기서 JPEG로 변환 (저장은 항상 .jpg)
 ⑥ Storage에 업로드 (진행률 표시) → places · photos · events 기록 저장
-⑦ "지도에서 보기" → 방금 올린 추억이 지도에서 바로 열림
+⑦ reorder_places() 로 추억 안의 장소 순서를 촬영 시각 순서로 다시 매김
+     └ 기존 추억에 나중에 추가해도 시간 순서대로 끼워 넣어짐
+⑧ "지도에서 보기" → 방금 올린 추억이 지도에서 바로 열림
 ```
 
+- **장소 순서 규칙:** 장소마다 가장 이른 촬영 시각으로 정렬합니다. 촬영 시각이 없는 장소는 올린 순서대로 뒤에 놓입니다.
 - 장소 이름은 입력하지 않아도 됩니다. 이름이 없으면 화면에 "1번째 장소", "3곳 중 2번째 장소"처럼 보이고, 나중에 사진 모아 보기에서 붙일 수 있습니다.
 - 사진은 올리기 전에 줄이기 때문에 **한 장 약 0.52MB**(본 사진 약 500KB + 썸네일 약 35KB)만 저장됩니다.
 - DB 저장에 실패하면 올린 파일을 지우고, 다시 시도할 때 추억이 두 번 만들어지지 않게 합니다.
@@ -208,7 +211,7 @@ erDiagram
 | `event_id` | uuid → events | 어느 추억의 장소인지 (추억을 지우면 함께 지워짐) |
 | `name` | text (1~100자) | 직접 붙인 이름만 저장. 이름이 없으면 `'장소'`로 저장하고 화면에서 "N번째 장소"로 표시 |
 | `latitude` / `longitude` | numeric(9,6) | 좌표 |
-| `visit_order` | smallint | 방문 순서 (선을 잇는 순서). 추억 안에서 겹치지 않음 |
+| `visit_order` | smallint | 방문 순서 (선을 잇는 순서). 촬영 시각 순서로 매김, 추억 안에서 겹치지 않음 |
 | `created_at` / `updated_at` | timestamptz | 자동 |
 
 > 같은 곳을 다른 날 또 가면 추억마다 장소 기록이 따로 생기고, 지도에서 좌표로 묶어 핀 하나에 "추억 N개"로 보여 줍니다.
@@ -256,6 +259,7 @@ erDiagram
 | `places_in_bounds(...)` | 지도 화면 범위 안의 장소 (준비만 해 둠, 현재 미사용) |
 | `events_within_radius(...)` | 기준 좌표 반경 안의 추억, 가까운 순 (준비만 해 둠, 현재 미사용) |
 | `set_updated_at()` | 고칠 때 `updated_at` 자동 갱신 (트리거) |
+| `reorder_places(event_id)` | 추억 안의 장소 순서를 촬영 시각 순서로 다시 매김 (시간 없는 장소는 올린 순서대로 뒤에) |
 | `login_locked_until(email)` | 그 이메일이 잠겨 있으면 풀리는 시각 (로그인 전에 호출) |
 | `login_failed(email)` | 비밀번호 실패 기록, 5번째면 10분 잠금. 남은 기회를 돌려줌 |
 | `login_succeeded()` | 로그인한 본인의 실패 기록 삭제 |
@@ -272,6 +276,7 @@ erDiagram
 | `supabase/migrations/001_init.sql` | 표 4개, RLS 정책, Storage 버킷과 정책, 조회 함수 |
 | `supabase/migrations/002_harden_grants.sql` | 로그인하지 않은 접근 차단, 권한 명시 |
 | `supabase/migrations/003_login_lockout.sql` | 비밀번호 5번 실패 시 10분 잠금 |
+| `supabase/migrations/004_reorder_places.sql` | 장소 순서를 촬영 시각 순서로 다시 매기는 함수 |
 
 ---
 
