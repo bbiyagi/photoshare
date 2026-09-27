@@ -3,7 +3,7 @@
 두 사람이 함께 간 곳을 **지도 위에 사진으로 남기는** 비공개 추억 지도 웹앱입니다.
 사진을 올리면 촬영일과 위치(GPS)를 읽어 지도에 핀으로 꽂고, 하루의 여러 장소를 **방문 순서대로 선으로 이어** 그날의 동선을 보여 줍니다.
 
-- 배포 주소: https://photoshare-xk4z.vercel.app (등록된 두 계정만 로그인 가능)
+- 배포 주소: https://bochung-memory.vercel.app (등록된 두 계정만 로그인 가능)
 - 휴대폰 화면을 기준으로 만들었고 PC에서도 동작합니다. 라이트·다크 모드는 휴대폰 설정을 따릅니다.
 
 ---
@@ -60,12 +60,16 @@
 
 ```
 이메일·비밀번호 입력
+  → login_locked_until() 로 잠겨 있는지 확인 (잠겨 있으면 "N분 뒤에 다시 시도해 주세요")
   → Supabase Auth 로그인
+      └ 비밀번호가 틀리면 login_failed() 로 기록 → "남은 기회 N번" / 5번째면 10분 잠금
   → is_member() 로 "등록된 두 사람 중 하나인지" 확인
-      ├ 맞음  → 원래 가려던 화면으로
+      ├ 맞음  → login_succeeded() 로 실패 기록 지우고, 원래 가려던 화면으로
       └ 아님  → 바로 로그아웃 + "아직 등록되지 않은 계정이에요. 상대에게 등록을 부탁해 주세요."
 ```
 
+- **10분 안에 비밀번호를 5번 틀리면 그 이메일은 10분 동안 로그인할 수 없습니다.** 횟수와 잠금 시각은 DB 함수만 바꿀 수 있어 브라우저에서 고치거나 지울 수 없습니다.
+  - Supabase의 서버쪽 로그인 훅은 Teams 요금제 이상 전용이라 무료 요금제에 맞춰 만든 방식입니다. 앱을 거치지 않고 Auth API를 직접 부르는 시도는 Supabase 기본 IP 요청 제한이 막습니다.
 - 회원가입 화면은 없습니다. 계정은 Supabase 대시보드에서 만들고 `members` 표에 등록합니다.
 - 비밀번호가 틀리면 칸이 빨갛게 표시되고, 다시 입력하면 오류가 사라집니다.
 - 연결 오류 등 다른 문제는 "연결이 불안정해요. 잠시 후 다시 시도해 주세요."로 보여 주고, 원인은 콘솔에만 남깁니다.
@@ -224,6 +228,17 @@ erDiagram
 | `created_by` | uuid → auth.users | 올린 사람 (자동) |
 | `created_at` / `updated_at` | timestamptz | 자동 |
 
+### login_failures · 로그인 실패 기록
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `email` | text, PK | 로그인을 시도한 이메일 (소문자) |
+| `fail_count` | smallint | 연속 실패 횟수 (마지막 실패에서 10분 지나면 다시 1부터) |
+| `last_failed_at` | timestamptz | 마지막 실패 시각 (하루 지난 기록은 자동 삭제) |
+| `locked_until` | timestamptz | 잠금이 풀리는 시각 (잠기지 않았으면 비어 있음) |
+
+> 브라우저는 이 표를 직접 읽거나 고칠 수 없고, 아래 `login_*` 함수로만 다룹니다.
+
 ### Storage · 사진 파일
 
 | 항목 | 값 |
@@ -241,6 +256,9 @@ erDiagram
 | `places_in_bounds(...)` | 지도 화면 범위 안의 장소 (준비만 해 둠, 현재 미사용) |
 | `events_within_radius(...)` | 기준 좌표 반경 안의 추억, 가까운 순 (준비만 해 둠, 현재 미사용) |
 | `set_updated_at()` | 고칠 때 `updated_at` 자동 갱신 (트리거) |
+| `login_locked_until(email)` | 그 이메일이 잠겨 있으면 풀리는 시각 (로그인 전에 호출) |
+| `login_failed(email)` | 비밀번호 실패 기록, 5번째면 10분 잠금. 남은 기회를 돌려줌 |
+| `login_succeeded()` | 로그인한 본인의 실패 기록 삭제 |
 
 ### 보안 (두 사람만 볼 수 있게)
 
@@ -253,6 +271,7 @@ erDiagram
 |---|---|
 | `supabase/migrations/001_init.sql` | 표 4개, RLS 정책, Storage 버킷과 정책, 조회 함수 |
 | `supabase/migrations/002_harden_grants.sql` | 로그인하지 않은 접근 차단, 권한 명시 |
+| `supabase/migrations/003_login_lockout.sql` | 비밀번호 5번 실패 시 10분 잠금 |
 
 ---
 
