@@ -335,7 +335,9 @@ const doneCount = computed(() => items.value.filter((i) => i.status === 'done').
         <PhImagesSquare :size="30" />
         <span class="font-semibold">{{ dragging ? '여기에 놓으면 추가돼요' : '사진 고르기' }}<span v-if="!dragging" class="hidden md:inline"> 또는 끌어다 놓기</span></span>
         <span class="text-xs text-muted">여러 장 한 번에, 한 장 최대 20MB (jpg, png, webp, heic)</span>
-        <input type="file" accept="image/*,.heic,.heif" multiple class="sr-only" :disabled="submitting" @change="onFilesSelected" />
+        <!-- accept 를 image/* 대신 확장자로만 지정한다. 안드로이드 크롬은 image/* 이면 사진 선택기를 띄우는데
+             그 선택기가 위치(GPS)를 지우고 넘겨준다. 확장자만 주면 일반 파일 선택 창이 열려 원본을 고를 수 있다. -->
+        <input type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" multiple class="sr-only" :disabled="submitting" @change="onFilesSelected" />
       </label>
 
       <!-- 2. 사진별 날짜·위치 -->
