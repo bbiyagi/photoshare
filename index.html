@@ -5,13 +5,34 @@
     <!-- 파비콘: 보라 바탕 + 지도 핀 + 하트(추억). SVG 를 못 쓰는 브라우저는 PNG -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
-    <!-- 휴대폰 홈 화면에 추가할 때 아이콘 -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- 휴대폰 홈 화면에 추가할 때 아이콘 (아이폰은 180px PNG 를 따로 지정해야 한다) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <!-- 아이폰 홈 화면 앱: 주소창 없이 열기, 홈 화면 이름, 상태바 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="보충만의 추억" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- 휴대폰 브라우저 주소창 색을 상단바와 맞춘다 -->
     <meta name="theme-color" content="#6b5b95" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#2e2742" media="(prefers-color-scheme: dark)" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>보충만의 추억</title>
+    <meta name="description" content="우리 둘이 함께 간 곳을 지도 위에 사진으로 남기는 추억 지도" />
+    <!-- 링크 공유 미리보기 (카카오톡·메시지·SNS). 이미지 주소는 전체 주소여야 한다 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="보충만의 추억" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:url" content="https://bochung-memory.vercel.app/" />
+    <meta property="og:title" content="보충만의 추억" />
+    <meta property="og:description" content="우리 둘이 함께 간 곳을 지도 위에 사진으로 남기는 추억 지도" />
+    <meta property="og:image" content="https://bochung-memory.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="보라 바탕에 지도 핀들이 점선으로 이어진 보충만의 추억 로고" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="보충만의 추억" />
+    <meta name="twitter:description" content="우리 둘이 함께 간 곳을 지도 위에 사진으로 남기는 추억 지도" />
+    <meta name="twitter:image" content="https://bochung-memory.vercel.app/og-image.png" />
   </head>
   <body>
     <div id="app"></div>
